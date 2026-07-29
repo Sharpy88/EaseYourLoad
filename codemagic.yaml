@@ -1,12 +1,22 @@
 workflows:
   my-flutter-workflow:
-    name: Flutter Build
+    name: Flutter iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - appstore_credentials
     scripts:
-      - name: Build iOS App
+      - name: Initialize Mac Keychain
+        script: keychain initialize
+      - name: Fetch Apple Signing Profiles
+        script: |
+          app-store-connect fetch-signing-files "com.easeyourmind.app" --type IOS_APP_DEVELOPMENT --create
+      - name: Inject Profiles into Project
+        script: xcode-project use-profiles
+      - name: Build Signed iOS IPA
         script: |
           flutter pub get
-          flutter build ipa --release --no-codesign
+          flutter build ipa --release --export-method=development
     artifacts:
       - build/ios/ipa/*.ipa
