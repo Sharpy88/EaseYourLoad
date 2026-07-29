@@ -1,5 +1,5 @@
 
-workflows:
+lworkflows:
   my-flutter-workflow:
     name: Flutter Build
     max_build_duration: 60
