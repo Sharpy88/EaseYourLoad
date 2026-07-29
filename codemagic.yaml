@@ -1,5 +1,3 @@
-yaml
-
 workflows:
   my-flutter-workflow:
     name: Flutter Build
