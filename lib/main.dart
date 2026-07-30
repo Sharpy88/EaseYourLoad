@@ -9,11 +9,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'household_sync.dart';
+import 'models.dart';
+import 'share_page.dart';
+import 'shared_data.dart';
+
 final notifications = NotificationService();
+final householdSync = HouseholdSync();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await notifications.initialize();
+  unawaited(householdSync.initialize());
   runApp(const MentalLoadApp());
 }
 
@@ -90,81 +97,6 @@ class MentalLoadApp extends StatelessWidget {
     home: const HomeShell(),
   );
 }
-
-class CheckItem {
-  CheckItem(
-    this.title, {
-    this.done = false,
-    this.note = '',
-    this.dueAt,
-    this.notificationId,
-  });
-  String title;
-  bool done;
-  String note;
-  DateTime? dueAt;
-  int? notificationId;
-}
-
-class CalendarEvent {
-  CalendarEvent(this.title, this.date);
-  String title;
-  DateTime date;
-}
-
-class Idea {
-  Idea(this.title, this.detail);
-  String title;
-  String detail;
-}
-
-class Expense {
-  Expense(this.title, this.amount, this.category);
-  String title;
-  double amount;
-  String category;
-}
-
-Map<String, dynamic> checkItemToJson(CheckItem item) => {
-  'title': item.title,
-  'done': item.done,
-  'note': item.note,
-  'dueAt': item.dueAt?.toIso8601String(),
-  'notificationId': item.notificationId,
-};
-
-CheckItem checkItemFromJson(Map<String, dynamic> json) => CheckItem(
-  json['title'] as String,
-  done: json['done'] as bool? ?? false,
-  note: json['note'] as String? ?? '',
-  dueAt: json['dueAt'] == null ? null : DateTime.parse(json['dueAt'] as String),
-  notificationId: json['notificationId'] as int?,
-);
-
-Map<String, dynamic> eventToJson(CalendarEvent event) => {
-  'title': event.title,
-  'date': event.date.toIso8601String(),
-};
-CalendarEvent eventFromJson(Map<String, dynamic> json) => CalendarEvent(
-  json['title'] as String,
-  DateTime.parse(json['date'] as String),
-);
-Map<String, dynamic> ideaToJson(Idea idea) => {
-  'title': idea.title,
-  'detail': idea.detail,
-};
-Idea ideaFromJson(Map<String, dynamic> json) =>
-    Idea(json['title'] as String, json['detail'] as String);
-Map<String, dynamic> expenseToJson(Expense expense) => {
-  'title': expense.title,
-  'amount': expense.amount,
-  'category': expense.category,
-};
-Expense expenseFromJson(Map<String, dynamic> json) => Expense(
-  json['title'] as String,
-  (json['amount'] as num).toDouble(),
-  json['category'] as String,
-);
 
 class NotificationPreferences {
   NotificationPreferences();
@@ -252,28 +184,13 @@ class AppStorage {
   }
 
   Future<void> save({
-    required List<CheckItem> shopping,
-    required List<CheckItem> chores,
-    required List<CalendarEvent> events,
-    required List<Idea> gifts,
-    required List<Idea> dates,
-    required List<Expense> expenses,
-    required double budget,
+    required SharedData data,
     required NotificationPreferences notifications,
   }) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       _key,
-      jsonEncode({
-        'shopping': shopping.map(checkItemToJson).toList(),
-        'chores': chores.map(checkItemToJson).toList(),
-        'events': events.map(eventToJson).toList(),
-        'gifts': gifts.map(ideaToJson).toList(),
-        'dates': dates.map(ideaToJson).toList(),
-        'expenses': expenses.map(expenseToJson).toList(),
-        'budget': budget,
-        'notifications': notifications.toJson(),
-      }),
+      jsonEncode({...data.toJson(), 'notifications': notifications.toJson()}),
     );
   }
 }
@@ -286,27 +203,40 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
-  Future<void> initialize() async {
-    if (!Platform.isAndroid) return;
-    tz.initializeTimeZones();
-    final zone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(zone.identifier));
-    const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
-    await _plugin.initialize(settings: settings);
-    _ready = true;
-  }
+Future<void> initialize() async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  tz.initializeTimeZones();
+  final zone = await FlutterTimezone.getLocalTimezone();
+  tz.setLocalLocation(tz.getLocation(zone.identifier));
+  const settings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false, // we'll ask explicitly via requestPermission()
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
+  );
+  await _plugin.initialize(settings: settings);
+  _ready = true;
+}
 
-  Future<bool> requestPermission() async {
-    if (!_ready) return false;
+Future<bool> requestPermission() async {
+  if (!_ready) return false;
+  if (Platform.isIOS) {
     return await _plugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation
+              IOSFlutterLocalNotificationsPlugin
             >()
-            ?.requestNotificationsPermission() ??
+            ?.requestPermissions(alert: true, badge: true, sound: true) ??
         false;
   }
+  return await _plugin
+          .resolvePlatformSpecificImplementation
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission() ??
+      false;
+}
 
   Future<void> showTest() async {
     if (!_ready) return;
@@ -327,7 +257,7 @@ class NotificationService {
   }
 
   Future<void> syncPreferences(NotificationPreferences preferences) async {
-    if (!_ready || !Platform.isAndroid) return;
+    if (!_ready) return;
     if (!preferences.enabled) {
       await cancelDailyCheckIn();
       await cancelCategoryReminders(_householdReminderBaseId);
@@ -520,7 +450,62 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    householdSync.onRemoteData = _applyRemote;
+    householdSync.addListener(_onSyncChanged);
     unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    householdSync.onRemoteData = null;
+    householdSync.removeListener(_onSyncChanged);
+    super.dispose();
+  }
+
+  void _onSyncChanged() {
+    if (mounted) setState(() {});
+  }
+
+  SharedData _sharedData() => SharedData(
+    shopping: shopping,
+    chores: chores,
+    events: events,
+    gifts: gifts,
+    dates: dates,
+    expenses: expenses,
+    budget: budget,
+  );
+
+  /// Replaces local content with what another household member shared.
+  void _applyRemote(SharedData data) {
+    if (!mounted) return;
+    setState(() => _replaceAll(data));
+    unawaited(_save());
+    for (final task in chores.where((item) => !item.done && item.dueAt != null)) {
+      unawaited(notifications.scheduleTaskReminder(task));
+    }
+  }
+
+  void _replaceAll(SharedData data) {
+    shopping
+      ..clear()
+      ..addAll(data.shopping);
+    chores
+      ..clear()
+      ..addAll(data.chores);
+    events
+      ..clear()
+      ..addAll(data.events);
+    gifts
+      ..clear()
+      ..addAll(data.gifts);
+    dates
+      ..clear()
+      ..addAll(data.dates);
+    expenses
+      ..clear()
+      ..addAll(data.expenses);
+    budget = data.budget;
   }
 
   Future<void> _load() async {
@@ -528,49 +513,7 @@ class _HomeShellState extends State<HomeShell> {
     if (saved == null || !mounted) return;
     final settings = saved['notifications'] as Map<String, dynamic>?;
     setState(() {
-      shopping
-        ..clear()
-        ..addAll(
-          (saved['shopping'] as List<dynamic>).map(
-            (item) => checkItemFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      chores
-        ..clear()
-        ..addAll(
-          (saved['chores'] as List<dynamic>).map(
-            (item) => checkItemFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      events
-        ..clear()
-        ..addAll(
-          (saved['events'] as List<dynamic>).map(
-            (item) => eventFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      gifts
-        ..clear()
-        ..addAll(
-          (saved['gifts'] as List<dynamic>).map(
-            (item) => ideaFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      dates
-        ..clear()
-        ..addAll(
-          (saved['dates'] as List<dynamic>).map(
-            (item) => ideaFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      expenses
-        ..clear()
-        ..addAll(
-          (saved['expenses'] as List<dynamic>).map(
-            (item) => expenseFromJson(item as Map<String, dynamic>),
-          ),
-        );
-      budget = (saved['budget'] as num?)?.toDouble() ?? budget;
+      _replaceAll(SharedData.fromJson(saved, fallbackBudget: budget));
       if (settings != null) {
         notificationPreferences
           ..enabled = settings['enabled'] as bool? ?? false
@@ -601,19 +544,14 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _save() => _storage.save(
-    shopping: shopping,
-    chores: chores,
-    events: events,
-    gifts: gifts,
-    dates: dates,
-    expenses: expenses,
-    budget: budget,
+    data: _sharedData(),
     notifications: notificationPreferences,
   );
 
   void _refresh() {
     setState(() {});
     unawaited(_save());
+    householdSync.push(_sharedData());
   }
 
   @override
@@ -634,8 +572,8 @@ class _HomeShellState extends State<HomeShell> {
               budget: budget,
               onChanged: _refresh,
               onBudget: (value) {
-                setState(() => budget = value);
-                unawaited(_save());
+                budget = value;
+                _refresh();
               },
             ),
           ),
@@ -666,9 +604,10 @@ class _HomeShellState extends State<HomeShell> {
         notificationPreferences: notificationPreferences,
         onChanged: _refresh,
         onBudget: (value) {
-          setState(() => budget = value);
-          unawaited(_save());
+          budget = value;
+          _refresh();
         },
+        currentData: _sharedData,
       ),
     ];
     return Scaffold(
@@ -1081,6 +1020,7 @@ class MorePage extends StatelessWidget {
     required this.notificationPreferences,
     required this.onChanged,
     required this.onBudget,
+    required this.currentData,
   });
   final List<Idea> gifts, dates;
   final List<Expense> expenses;
@@ -1088,6 +1028,7 @@ class MorePage extends StatelessWidget {
   final NotificationPreferences notificationPreferences;
   final VoidCallback onChanged;
   final ValueChanged<double> onBudget;
+  final SharedData Function() currentData;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(20),
@@ -1163,6 +1104,20 @@ class MorePage extends StatelessWidget {
           ),
         ),
       ),
+      _MoreCard(
+        icon: Icons.people_outline,
+        title: 'Share with someone',
+        subtitle: householdSync.isSharing
+            ? 'Sharing live with code ${householdSync.inviteCode}'
+            : 'Invite a partner to see the same lists',
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                SharePage(sync: householdSync, currentData: currentData),
+          ),
+        ),
+      ),
     ],
   );
 }
@@ -1181,7 +1136,7 @@ class NotificationSettingsPage extends StatefulWidget {
 }
 
 class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
-  bool get isAndroid => Platform.isAndroid;
+  bool get isAndroid => Platform.isAndroid || Platform.isIOS;
 
   Widget _buildReminderScheduleEditor({
     required String title,
