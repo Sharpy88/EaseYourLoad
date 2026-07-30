@@ -1,16 +1,13 @@
-
 workflows:
   my-flutter-workflow:
-    name: Flutter Build
+    name: Flutter iOS Build
     max_build_duration: 60
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
     scripts:
-      - name: Get Flutter dependencies
-        script: flutter pub get
-      - name: Build Android APK
-        script: flutter build apk --release
-      - name: Build iOS IPA
-        script: flutter build ipa --release --no-codesign
+      - name: Build Unsigned iOS App
+        script: |
+          flutter pub get
+          flutter build ios --release --no-codesign
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-      - build/ios/ipa/*.ipa
+      - build/ios/iphoneos/Runner.app
+
