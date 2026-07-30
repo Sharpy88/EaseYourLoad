@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "61890354817",
+    "project_id": "easeyourminddatabase-ca0de",
+    "storage_bucket": "easeyourminddatabase-ca0de.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:61890354817:android:19403e60b630939d5df780",
+        "android_client_info": {
+          "package_name": "com.easeyourmind.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcy7DL4z5kldMDs4R8LCPSpO4oRS7vP0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

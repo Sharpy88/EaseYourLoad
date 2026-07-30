@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("kotlin-android") // You can also safely remove this line if your build uses AGP 9.0's built-in Kotlin feature
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -16,8 +17,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.mental_load_app"
+        // Matches the Android app registered in the Firebase project and the
+        // iOS bundle id.
+        applicationId = "com.easeyourmind.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

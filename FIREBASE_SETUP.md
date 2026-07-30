@@ -8,16 +8,19 @@ exactly as before, fully offline, with the sharing screen showing
 
 ## Current state
 
-- **iOS is configured** for the `easeyourminddatabase-ca0de` project:
-  `ios/Runner/GoogleService-Info.plist` is committed and bundled with the Runner
-  target, and `lib/firebase_options.dart` holds the matching iOS values.
-- **Android and web are not configured yet** — they stay local-only until their
-  sections of `lib/firebase_options.dart` are filled in (step 2).
+- **Android and iOS are configured** for the `easeyourminddatabase-ca0de`
+  project: `ios/Runner/GoogleService-Info.plist` (bundled with the Runner target)
+  and `android/app/google-services.json` are committed, and
+  `lib/firebase_options.dart` holds the matching values. Both platforms use the
+  application id / bundle id `com.easeyourmind.app`, which is what the Firebase
+  apps are registered against — changing it breaks the Android build.
+- **Web is not configured** — it stays local-only until the web section of
+  `lib/firebase_options.dart` is filled in (step 2).
 - **The Firestore rules still need publishing** (step 3). A database left in Test
   mode lets anyone read and write your household data and stops working after
   about 30 days.
 
-Steps 1 and 2 are only needed for a new project or when adding Android.
+Steps 1 and 2 are only needed for a new project or when adding web support.
 
 ## 1. Create the Firebase project
 

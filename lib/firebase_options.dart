@@ -1,8 +1,8 @@
 // Firebase configuration for the easeyourminddatabase-ca0de project.
 //
-// iOS is configured. Android and web are still placeholders: an empty apiKey
-// keeps those platforms in local-only mode with sharing disabled. Run
-// `flutterfire configure` (see FIREBASE_SETUP.md) to fill them in.
+// Android and iOS are configured. Web is still a placeholder: an empty apiKey
+// keeps that platform in local-only mode with sharing disabled. Run
+// `flutterfire configure` (see FIREBASE_SETUP.md) to fill it in.
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -23,10 +23,11 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: '',
-    appId: '',
-    messagingSenderId: '',
-    projectId: '',
+    apiKey: 'AIzaSyCcy7DL4z5kldMDs4R8LCPSpO4oRS7vP0Y',
+    appId: '1:61890354817:android:19403e60b630939d5df780',
+    messagingSenderId: '61890354817',
+    projectId: 'easeyourminddatabase-ca0de',
+    storageBucket: 'easeyourminddatabase-ca0de.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
