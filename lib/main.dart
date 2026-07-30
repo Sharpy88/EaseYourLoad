@@ -203,27 +203,40 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
-  Future<void> initialize() async {
-    if (!Platform.isAndroid) return;
-    tz.initializeTimeZones();
-    final zone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(zone.identifier));
-    const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
-    await _plugin.initialize(settings: settings);
-    _ready = true;
-  }
+Future<void> initialize() async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  tz.initializeTimeZones();
+  final zone = await FlutterTimezone.getLocalTimezone();
+  tz.setLocalLocation(tz.getLocation(zone.identifier));
+  const settings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false, // we'll ask explicitly via requestPermission()
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
+  );
+  await _plugin.initialize(settings: settings);
+  _ready = true;
+}
 
-  Future<bool> requestPermission() async {
-    if (!_ready) return false;
+Future<bool> requestPermission() async {
+  if (!_ready) return false;
+  if (Platform.isIOS) {
     return await _plugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation
+              IOSFlutterLocalNotificationsPlugin
             >()
-            ?.requestNotificationsPermission() ??
+            ?.requestPermissions(alert: true, badge: true, sound: true) ??
         false;
   }
+  return await _plugin
+          .resolvePlatformSpecificImplementation
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission() ??
+      false;
+}
 
   Future<void> showTest() async {
     if (!_ready) return;
@@ -244,7 +257,7 @@ class NotificationService {
   }
 
   Future<void> syncPreferences(NotificationPreferences preferences) async {
-    if (!_ready || !Platform.isAndroid) return;
+    if (!_ready) return;
     if (!preferences.enabled) {
       await cancelDailyCheckIn();
       await cancelCategoryReminders(_householdReminderBaseId);
@@ -1123,7 +1136,7 @@ class NotificationSettingsPage extends StatefulWidget {
 }
 
 class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
-  bool get isAndroid => Platform.isAndroid;
+  bool get isAndroid => Platform.isAndroid || Platform.isIOS;
 
   Widget _buildReminderScheduleEditor({
     required String title,
