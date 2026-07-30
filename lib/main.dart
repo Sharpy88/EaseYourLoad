@@ -118,16 +118,6 @@ class Idea {
   String detail;
 }
 
-class GiftProfile {
-  GiftProfile({required this.name, this.pin = '', List<Idea>? ideas})
-    : ideas = ideas ?? <Idea>[];
-
-  String id = DateTime.now().microsecondsSinceEpoch.toString();
-  String name;
-  String pin;
-  List<Idea> ideas;
-}
-
 class Expense {
   Expense(this.title, this.amount, this.category);
   String title;
@@ -165,20 +155,6 @@ Map<String, dynamic> ideaToJson(Idea idea) => {
 };
 Idea ideaFromJson(Map<String, dynamic> json) =>
     Idea(json['title'] as String, json['detail'] as String);
-Map<String, dynamic> giftProfileToJson(GiftProfile profile) => {
-  'id': profile.id,
-  'name': profile.name,
-  'pin': profile.pin,
-  'ideas': profile.ideas.map(ideaToJson).toList(),
-};
-GiftProfile giftProfileFromJson(Map<String, dynamic> json) => GiftProfile(
-  name: json['name'] as String? ?? 'Gift ideas',
-  pin: json['pin'] as String? ?? '',
-  ideas: (json['ideas'] as List<dynamic>?)
-          ?.map((item) => ideaFromJson(item as Map<String, dynamic>))
-          .toList() ??
-      <Idea>[],
-  )..id = json['id'] as String? ?? DateTime.now().microsecondsSinceEpoch.toString();
 Map<String, dynamic> expenseToJson(Expense expense) => {
   'title': expense.title,
   'amount': expense.amount,
@@ -279,7 +255,7 @@ class AppStorage {
     required List<CheckItem> shopping,
     required List<CheckItem> chores,
     required List<CalendarEvent> events,
-    required List<GiftProfile> giftProfiles,
+    required List<Idea> gifts,
     required List<Idea> dates,
     required List<Expense> expenses,
     required double budget,
@@ -292,7 +268,7 @@ class AppStorage {
         'shopping': shopping.map(checkItemToJson).toList(),
         'chores': chores.map(checkItemToJson).toList(),
         'events': events.map(eventToJson).toList(),
-        'giftProfiles': giftProfiles.map(giftProfileToJson).toList(),
+        'gifts': gifts.map(ideaToJson).toList(),
         'dates': dates.map(ideaToJson).toList(),
         'expenses': expenses.map(expenseToJson).toList(),
         'budget': budget,
@@ -530,12 +506,7 @@ class _HomeShellState extends State<HomeShell> {
     CalendarEvent('Mia’s swimming', DateTime.now()),
     CalendarEvent('Date night', DateTime.now().add(const Duration(days: 3))),
   ];
-  final giftProfiles = <GiftProfile>[
-    GiftProfile(
-      name: 'Your gifts',
-      ideas: [Idea('Sam', 'Cookbook — birthday in August')],
-    ),
-  ];
+  final gifts = <Idea>[Idea('Sam', 'Cookbook — birthday in August')];
   final dates = <Idea>[
     Idea('Dinner at Little Red', 'Try the new seasonal menu'),
   ];
@@ -578,26 +549,12 @@ class _HomeShellState extends State<HomeShell> {
             (item) => eventFromJson(item as Map<String, dynamic>),
           ),
         );
-      giftProfiles
+      gifts
         ..clear()
         ..addAll(
-          ((saved['giftProfiles'] as List<dynamic>?)
-                  ?.map(
-                    (item) => giftProfileFromJson(item as Map<String, dynamic>),
-                  )
-                  .toList() ??
-              <GiftProfile>[
-                GiftProfile(
-                  name: 'Your gifts',
-                  ideas: ((saved['gifts'] as List<dynamic>?)
-                          ?.map(
-                            (item) =>
-                                ideaFromJson(item as Map<String, dynamic>),
-                          )
-                          .toList() ??
-                      <Idea>[]),
-                ),
-              ]),
+          (saved['gifts'] as List<dynamic>).map(
+            (item) => ideaFromJson(item as Map<String, dynamic>),
+          ),
         );
       dates
         ..clear()
@@ -647,7 +604,7 @@ class _HomeShellState extends State<HomeShell> {
     shopping: shopping,
     chores: chores,
     events: events,
-    giftProfiles: giftProfiles,
+    gifts: gifts,
     dates: dates,
     expenses: expenses,
     budget: budget,
@@ -702,7 +659,7 @@ class _HomeShellState extends State<HomeShell> {
         onChanged: _refresh,
       ),
       MorePage(
-        giftProfiles: giftProfiles,
+        gifts: gifts,
         dates: dates,
         expenses: expenses,
         budget: budget,
@@ -717,8 +674,6 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: SafeArea(child: pages[_tab]),
       bottomNavigationBar: NavigationBar(
-        height: 74,
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         selectedIndex: _tab,
         onDestinationSelected: (index) => setState(() => _tab = index),
         destinations: const [
@@ -736,7 +691,7 @@ class _HomeShellState extends State<HomeShell> {
           ),
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
-            label: 'Chores',
+            label: 'Household',
           ),
           NavigationDestination(
             icon: Icon(Icons.more_horiz_rounded),
@@ -1119,7 +1074,7 @@ class ChecklistPage extends StatelessWidget {
 class MorePage extends StatelessWidget {
   const MorePage({
     super.key,
-    required this.giftProfiles,
+    required this.gifts,
     required this.dates,
     required this.expenses,
     required this.budget,
@@ -1127,8 +1082,7 @@ class MorePage extends StatelessWidget {
     required this.onChanged,
     required this.onBudget,
   });
-  final List<GiftProfile> giftProfiles;
-  final List<Idea> dates;
+  final List<Idea> gifts, dates;
   final List<Expense> expenses;
   final double budget;
   final NotificationPreferences notificationPreferences;
@@ -1148,12 +1102,14 @@ class MorePage extends StatelessWidget {
       _MoreCard(
         icon: Icons.card_giftcard_outlined,
         title: 'Gift ideas',
-        subtitle: '${giftProfiles.fold<int>(0, (sum, profile) => sum + profile.ideas.length)} ideas saved',
+        subtitle: '${gifts.length} ideas saved',
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => GiftVaultPage(
-              profiles: giftProfiles,
+            builder: (_) => IdeaPage(
+              title: 'Gift ideas',
+              items: gifts,
+              prompt: 'Add gift idea',
               onChanged: onChanged,
             ),
           ),
@@ -1208,97 +1164,6 @@ class MorePage extends StatelessWidget {
         ),
       ),
     ],
-  );
-}
-
-class GiftVaultPage extends StatefulWidget {
-  const GiftVaultPage({
-    super.key,
-    required this.profiles,
-    required this.onChanged,
-  });
-  final List<GiftProfile> profiles;
-  final VoidCallback onChanged;
-
-  @override
-  State<GiftVaultPage> createState() => _GiftVaultPageState();
-}
-
-class _GiftVaultPageState extends State<GiftVaultPage> {
-  final Set<String> _unlockedProfiles = <String>{};
-
-  Future<void> _openProfile(GiftProfile profile) async {
-    if (profile.pin.isNotEmpty && !_unlockedProfiles.contains(profile.id)) {
-      final entered = await pinPrompt(context, 'Enter ${profile.name} PIN');
-      if (entered == null || entered != profile.pin) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('That PIN did not match.')),
-        );
-        return;
-      }
-      setState(() => _unlockedProfiles.add(profile.id));
-    }
-    if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => IdeaPage(
-          title: profile.name,
-          items: profile.ideas,
-          prompt: 'Add gift idea',
-          onChanged: () {
-            widget.onChanged();
-            if (mounted) setState(() {});
-          },
-        ),
-      ),
-    );
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Gift ideas')),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: () async {
-        final created = await addGiftProfile(context, widget.profiles, widget.onChanged);
-        if (created && mounted) setState(() {});
-      },
-      icon: const Icon(Icons.person_add_alt_1_outlined),
-      label: const Text('Add profile'),
-    ),
-    body: widget.profiles.isEmpty
-        ? const _EmptyCard(message: 'Add a profile to start your private gift ideas.')
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: widget.profiles.length,
-            itemBuilder: (context, index) {
-              final profile = widget.profiles[index];
-              final locked = profile.pin.isNotEmpty && !_unlockedProfiles.contains(profile.id);
-              return Card(
-                child: ListTile(
-                  onTap: () => _openProfile(profile),
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xffefe7dc),
-                    child: Icon(
-                      locked ? Icons.lock_outline_rounded : Icons.card_giftcard_outlined,
-                      color: const Color(0xff3c4f3f),
-                    ),
-                  ),
-                  title: Text(profile.name),
-                  subtitle: Text(
-                    locked
-                        ? 'Tap to unlock with a PIN'
-                        : '${profile.ideas.length} ideas saved',
-                  ),
-                  trailing: Icon(
-                    locked ? Icons.lock_outline_rounded : Icons.chevron_right,
-                  ),
-                ),
-              );
-            },
-          ),
   );
 }
 
@@ -2121,24 +1986,6 @@ Future<void> addHouseholdTask(
   }
 }
 
-Future<bool> addGiftProfile(
-  BuildContext context,
-  List<GiftProfile> profiles,
-  VoidCallback refresh,
-) async {
-  final result = await textPrompt(
-    context,
-    'Add gift profile',
-    fields: const ['Profile name', 'PIN/Password (optional)'],
-  );
-  if (result == null || result[0].trim().isEmpty) return false;
-  profiles.add(
-    GiftProfile(name: result[0].trim(), pin: result[1].trim(), ideas: []),
-  );
-  refresh();
-  return true;
-}
-
 Future<void> addIdea(
   BuildContext context,
   List<Idea> items,
@@ -2219,22 +2066,11 @@ Future<void> editBudget(
   if (amount != null && amount >= 0) onBudget(amount);
 }
 
-Future<String?> pinPrompt(BuildContext context, String title) async {
-  final result = await textPrompt(
-    context,
-    title,
-    fields: const ['PIN/Password'],
-    obscureText: true,
-  );
-  return result?.first;
-}
-
 Future<List<String>?> textPrompt(
   BuildContext context,
   String title, {
   required List<String> fields,
   List<String>? values,
-  bool obscureText = false,
 }) async {
   final controllers = List.generate(
     fields.length,
@@ -2253,7 +2089,6 @@ Future<List<String>?> textPrompt(
               padding: const EdgeInsets.only(bottom: 10),
               child: TextField(
                 controller: controllers[index],
-                obscureText: obscureText,
                 keyboardType:
                     fields[index] == 'Amount' ||
                         fields[index] == 'Budget amount'
