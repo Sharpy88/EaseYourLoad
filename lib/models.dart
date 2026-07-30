@@ -1,0 +1,79 @@
+class CheckItem {
+  CheckItem(
+    this.title, {
+    this.done = false,
+    this.note = '',
+    this.dueAt,
+    this.notificationId,
+  });
+  String title;
+  bool done;
+  String note;
+  DateTime? dueAt;
+  int? notificationId;
+}
+
+class CalendarEvent {
+  CalendarEvent(this.title, this.date);
+  String title;
+  DateTime date;
+}
+
+class Idea {
+  Idea(this.title, this.detail);
+  String title;
+  String detail;
+}
+
+class Expense {
+  Expense(this.title, this.amount, this.category);
+  String title;
+  double amount;
+  String category;
+}
+
+Map<String, dynamic> checkItemToJson(CheckItem item) => {
+  'title': item.title,
+  'done': item.done,
+  'note': item.note,
+  'dueAt': item.dueAt?.toIso8601String(),
+  'notificationId': item.notificationId,
+};
+
+CheckItem checkItemFromJson(Map<String, dynamic> json) => CheckItem(
+  json['title'] as String,
+  done: json['done'] as bool? ?? false,
+  note: json['note'] as String? ?? '',
+  dueAt: json['dueAt'] == null ? null : DateTime.parse(json['dueAt'] as String),
+  notificationId: json['notificationId'] as int?,
+);
+
+Map<String, dynamic> eventToJson(CalendarEvent event) => {
+  'title': event.title,
+  'date': event.date.toIso8601String(),
+};
+
+CalendarEvent eventFromJson(Map<String, dynamic> json) => CalendarEvent(
+  json['title'] as String,
+  DateTime.parse(json['date'] as String),
+);
+
+Map<String, dynamic> ideaToJson(Idea idea) => {
+  'title': idea.title,
+  'detail': idea.detail,
+};
+
+Idea ideaFromJson(Map<String, dynamic> json) =>
+    Idea(json['title'] as String, json['detail'] as String);
+
+Map<String, dynamic> expenseToJson(Expense expense) => {
+  'title': expense.title,
+  'amount': expense.amount,
+  'category': expense.category,
+};
+
+Expense expenseFromJson(Map<String, dynamic> json) => Expense(
+  json['title'] as String,
+  (json['amount'] as num).toDouble(),
+  json['category'] as String,
+);
