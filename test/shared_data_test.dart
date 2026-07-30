@@ -42,4 +42,58 @@ void main() {
     expect(restored.expenses, isEmpty);
     expect(restored.budget, 500);
   });
+
+  test('collections are keyed by item id so writes address single items', () {
+    final milk = CheckItem('Milk');
+    final json = SharedData(
+      shopping: [milk],
+      chores: const [],
+      events: const [],
+      gifts: const [],
+      dates: const [],
+      expenses: const [],
+      budget: 500,
+    ).toJson();
+
+    expect(json['shopping'], isA<Map<String, dynamic>>());
+    expect((json['shopping'] as Map).keys.single, milk.id);
+  });
+
+  test('items keep their id and creation order across a round-trip', () {
+    final first = CheckItem('Bread');
+    final second = CheckItem('Jam');
+    final data = SharedData(
+      shopping: [first, second],
+      chores: const [],
+      events: const [],
+      gifts: const [],
+      dates: const [],
+      expenses: const [],
+      budget: 500,
+    );
+
+    // Keys arrive from Firestore in arbitrary order; ids restore the order.
+    final shuffled = {
+      for (final key in (data.toJson()['shopping'] as Map).keys.toList().reversed)
+        key: (data.toJson()['shopping'] as Map)[key],
+    };
+    final restored = SharedData.fromJson({...data.toJson(), 'shopping': shuffled});
+
+    expect(restored.shopping.map((item) => item.id), [first.id, second.id]);
+    expect(restored.shopping.map((item) => item.title), ['Bread', 'Jam']);
+  });
+
+  test('lists written by older builds still load', () {
+    final restored = SharedData.fromJson({
+      'shopping': [
+        {'title': 'Milk', 'done': true, 'note': '', 'dueAt': null},
+      ],
+      'budget': 300,
+    });
+
+    expect(restored.shopping.single.title, 'Milk');
+    expect(restored.shopping.single.done, isTrue);
+    expect(restored.shopping.single.id, isNotEmpty);
+    expect(restored.budget, 300);
+  });
 }

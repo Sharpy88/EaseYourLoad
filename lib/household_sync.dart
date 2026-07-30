@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -36,8 +37,10 @@ class HouseholdException implements Exception {
 
 /// Keeps household content in sync between the people who share a household.
 ///
-/// The whole shared payload lives in one Firestore document so that a change
-/// anywhere in the app is one write and one snapshot for everybody else.
+/// The shared payload lives in one Firestore document, but writes address
+/// individual items (`data.shopping.<id>`) so two people editing at once do not
+/// overwrite each other's items. Only items that actually changed are written,
+/// and an item that disappeared locally is deleted rather than left behind.
 class HouseholdSync extends ChangeNotifier {
   HouseholdSync({this.writeDelay = const Duration(milliseconds: 400)});
 
@@ -56,10 +59,16 @@ class HouseholdSync extends ChangeNotifier {
   String? _errorMessage;
   int _memberCount = 0;
   String? _uid;
-  bool _appliedFirstSnapshot = false;
   Timer? _writeTimer;
   SharedData? _pendingData;
+  SharedData? _inFlightData;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _subscription;
+
+  /// The shared payload as it was last seen on, or sent to, the server. Used to
+  /// write only what changed and to tell a local deletion apart from an item
+  /// this device has simply never seen.
+  Map<String, dynamic> _known = const {};
+  String? _appliedSignature;
 
   SyncState get state => _state;
   String? get householdId => _householdId;
@@ -149,7 +158,8 @@ class HouseholdSync extends ChangeNotifier {
     final id = _householdId;
     await _stopListening();
     _householdId = null;
-    _appliedFirstSnapshot = false;
+    _appliedSignature = null;
+    _known = const {};
     _memberCount = 0;
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_householdKey);
@@ -178,15 +188,46 @@ class HouseholdSync extends ChangeNotifier {
     final id = _householdId;
     if (data == null || id == null) return;
     _pendingData = null;
+    final json = data.toJson();
+    final updates = _changesAgainstKnown(json);
+    if (updates.isEmpty) return;
+    _inFlightData = data;
+    updates['updatedAt'] = FieldValue.serverTimestamp();
+    updates['updatedBy'] = _uid;
     try {
-      await _households.doc(id).set({
-        'data': data.toJson(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'updatedBy': _uid,
-      }, SetOptions(merge: true));
+      await _households.doc(id).update(updates);
+      _known = json;
     } catch (error) {
       _fail('Could not save the shared changes. $error');
+    } finally {
+      if (_inFlightData == data) _inFlightData = null;
     }
+  }
+
+  /// Item-level difference between [json] and the last known server state, as
+  /// dotted field paths so that untouched items are left alone.
+  Map<String, Object?> _changesAgainstKnown(Map<String, dynamic> json) {
+    final updates = <String, Object?>{};
+    for (final name in SharedData.collections) {
+      final items = _collection(json[name]);
+      final known = _collection(_known[name]);
+      items.forEach((itemId, item) {
+        if (!mapEquals(known[itemId], item)) {
+          updates['data.$name.$itemId'] = item;
+        }
+      });
+      for (final itemId in known.keys) {
+        if (!items.containsKey(itemId)) {
+          updates['data.$name.$itemId'] = FieldValue.delete();
+        }
+      }
+    }
+    final budget = (json[SharedData.budgetField] as num?)?.toDouble();
+    final knownBudget = (_known[SharedData.budgetField] as num?)?.toDouble();
+    if (budget != knownBudget) {
+      updates['data.${SharedData.budgetField}'] = budget;
+    }
+    return updates;
   }
 
   Future<String> _reserveCode(SharedData current) async {
@@ -198,13 +239,15 @@ class HouseholdSync extends ChangeNotifier {
       ).join();
       final document = _households.doc(code);
       if ((await document.get()).exists) continue;
+      final json = current.toJson();
       await document.set({
         'members': [_uid],
-        'data': current.toJson(),
+        'data': json,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': _uid,
       });
+      _known = json;
       return code;
     }
     throw HouseholdException('Could not generate an invite code. Try again.');
@@ -213,7 +256,7 @@ class HouseholdSync extends ChangeNotifier {
   void _listen() {
     final id = _householdId;
     if (id == null) return;
-    _appliedFirstSnapshot = false;
+    _appliedSignature = null;
     _subscription?.cancel();
     _subscription = _households.doc(id).snapshots().listen(
       _handleSnapshot,
@@ -231,15 +274,50 @@ class HouseholdSync extends ChangeNotifier {
     _memberCount = _membersOf(document).length;
     _errorMessage = null;
     _set(SyncState.shared);
+    // A snapshot echoing a write this device has not finished sending would be
+    // missing that write.
     if (snapshot.metadata.hasPendingWrites) return;
-    // Our own writes are already reflected locally; applying them again could
-    // undo an edit made while the write was in flight.
-    final isOwnWrite = document['updatedBy'] == _uid;
-    if (isOwnWrite && _appliedFirstSnapshot) return;
     final data = document['data'];
     if (data is! Map) return;
-    _appliedFirstSnapshot = true;
-    onRemoteData?.call(SharedData.fromJson(Map<String, dynamic>.from(data)));
+    final remote = Map<String, dynamic>.from(data);
+    final merged = _withLocalEdits(remote, _known);
+    _known = remote;
+    final signature = jsonEncode(merged);
+    if (signature == _appliedSignature) return;
+    _appliedSignature = signature;
+    onRemoteData?.call(SharedData.fromJson(merged));
+  }
+
+  /// Overlays edits this device has made but not yet stored on the server, so
+  /// applying a snapshot never discards them.
+  Map<String, dynamic> _withLocalEdits(
+    Map<String, dynamic> remote,
+    Map<String, dynamic> known,
+  ) {
+    final local = (_pendingData ?? _inFlightData)?.toJson();
+    if (local == null) return remote;
+    final merged = Map<String, dynamic>.from(remote);
+    for (final name in SharedData.collections) {
+      final items = _collection(merged[name]);
+      final mine = _collection(local[name]);
+      final seen = _collection(known[name]);
+      // Items this device deleted stay deleted; items it has never seen stay.
+      items.removeWhere(
+        (itemId, _) => !mine.containsKey(itemId) && seen.containsKey(itemId),
+      );
+      merged[name] = {...items, ...mine};
+    }
+    merged[SharedData.budgetField] = local[SharedData.budgetField];
+    return merged;
+  }
+
+  Map<String, Map<String, dynamic>> _collection(dynamic value) {
+    if (value is! Map) return {};
+    return {
+      for (final entry in value.entries)
+        if (entry.key is String && entry.value is Map)
+          entry.key as String: Map<String, dynamic>.from(entry.value as Map),
+    };
   }
 
   List<String> _membersOf(Map<String, dynamic>? document) {
@@ -265,6 +343,7 @@ class HouseholdSync extends ChangeNotifier {
     _writeTimer?.cancel();
     _writeTimer = null;
     _pendingData = null;
+    _inFlightData = null;
     await _subscription?.cancel();
     _subscription = null;
   }
