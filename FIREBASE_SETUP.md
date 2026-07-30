@@ -6,6 +6,19 @@ update live. It needs a Firebase project. Until one is configured the app runs
 exactly as before, fully offline, with the sharing screen showing
 "Sharing unavailable".
 
+## Current state
+
+- **iOS is configured** for the `easeyourminddatabase-ca0de` project:
+  `ios/Runner/GoogleService-Info.plist` is committed and bundled with the Runner
+  target, and `lib/firebase_options.dart` holds the matching iOS values.
+- **Android and web are not configured yet** — they stay local-only until their
+  sections of `lib/firebase_options.dart` are filled in (step 2).
+- **The Firestore rules still need publishing** (step 3). A database left in Test
+  mode lets anyone read and write your household data and stops working after
+  about 30 days.
+
+Steps 1 and 2 are only needed for a new project or when adding Android.
+
 ## 1. Create the Firebase project
 
 1. Go to https://console.firebase.google.com and click **Add project**
