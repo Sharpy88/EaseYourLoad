@@ -8,12 +8,17 @@ environment:
 
 dependencies:
   firebase_core: ^4.12.1
+  firebase_auth: ^4.6.4
+  cloud_firestore: ^4.9.0
+  cloud_functions: ^4.4.0
   flutter:
     sdk: flutter
   flutter_local_notifications: ^22.2.0
   flutter_timezone: ^5.1.0
   shared_preferences: ^2.5.4
   timezone: ^0.11.1
+  crypto: ^3.0.2
+  flutter_secure_storage: ^8.0.0
 
 dev_dependencies:
   flutter_test:
