@@ -1,0 +1,37 @@
+// Firestore security rules (draft). Test carefully in the Rules playground before publishing.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users may only read/write their own user document
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Households document: only members can read/write
+    match /households/{hid} {
+      allow read, write: if request.auth != null && request.auth.uid in resource.data.members;
+    }
+
+    // Gifts inside a household
+    match /households/{hid}/gifts/{giftId} {
+      allow read: if request.auth != null
+        && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.members
+        && (resource.data.visibility == 'shared' || resource.data.createdBy == request.auth.uid);
+
+      allow create: if request.auth != null
+        && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.members
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update, delete: if request.auth != null
+        && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.members
+        && (resource.data.createdBy == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/households/$(hid)).data.ownerUid);
+    }
+
+    // Invite documents are admin-only. Use Cloud Functions (with admin SDK) to create/consume invites.
+    match /householdInvites/{inviteId} {
+      allow read, write: if false;
+    }
+  }
+}
